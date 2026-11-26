@@ -210,9 +210,15 @@ def comando(linha):
             rotas[nome] = [0, nome]
 
     elif partes[0] == "V" and len(partes) == 4 and partes[3].isdigit():
+        try:
+            ip = normaliza(socket.gethostbyname(partes[2]))
+        except socket.gaierror:
+            # nome de maquina que nao existe, trata como comando errado
+            print(linha + "???", flush=True)
+            return
         print(linha, flush=True)
         with lock:
-            vizinhos[partes[1]] = (normaliza(socket.gethostbyname(partes[2])), int(partes[3]))
+            vizinhos[partes[1]] = (ip, int(partes[3]))
             rotas[partes[1]] = [1, partes[1]]
 
     elif partes[0] == "R" and len(partes) == 2:
