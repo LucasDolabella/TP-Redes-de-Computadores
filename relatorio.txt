@@ -1,0 +1,106 @@
+TP JSON_RIP - Relatorio
+
+Como rodar: python3 roteador.py PORTA
+
+Fizemos as tres partes: a basica (vetor de distancias por UDP), o
+para-e-espera e os comandos por TCP com select. Os comandos tambem
+continuam funcionando por UDP.
+
+
+1. Estruturas
+
+- rotas: dicionario destino -> [custo, proximo passo]
+- vizinhos: dicionario nome -> (endereco, porta)
+- fila: mensagens que precisam ser enviadas
+
+O custo de cada enlace eh 1 e infinito eh 16.
+
+O timer (threading.Timer) nao envia nada, so coloca os vetores na fila, e
+quem envia eh o loop principal. No comeco o timer mandava direto, mas com o
+para-e-espera as duas threads ficavam lendo o mesmo socket e uma pegava o
+ACK da outra. Tem um lock pra tabela, os vizinhos e a fila.
+
+
+2. Mensagens JSON
+
+Toda mensagem entre roteadores tem:
+  "tipo": o tipo da mensagem
+  "de":   nome de quem esta mandando (o vizinho, nao a origem)
+  "seq":  numero de sequencia de quem mandou (comeca em 0)
+
+O "de" serve pra saber de qual vizinho veio a mensagem. Achamos mais facil
+do que ficar comparando o endereco que chega no recvfrom com os do comando V.
+
+Vetor de distancias:
+  {"tipo": "vetor", "vetor": {"R1": 0, "R3": 2}, "de": "R1", "seq": 0}
+  So tem nomes e distancias, sem endereco.
+
+Mensagem de texto (comando E):
+  {"tipo": "texto", "origem": "R1", "destino": "R3", "texto": "Oi!", "de": "R2", "seq": 5}
+  origem, destino e texto nao mudam no caminho. O "de" e o "seq" sao
+  trocados por cada roteador que repassa.
+
+ACK:
+  {"tipo": "ack", "seq": 5}
+  Devolve o seq da mensagem recebida. ACK nao recebe ACK.
+
+
+3. Roteamento
+
+O comando I liga o timer depois do tempo dado, e depois disso ele manda o
+vetor pros vizinhos a cada 1 segundo.
+
+Split horizon: no vetor de um vizinho nao vao as rotas que tem ele como
+proximo passo. A excecao sao as rotas com custo 16, que vao pra todo
+mundo (poisoned reverse).
+
+Quando chega um vetor de um vizinho, o custo novo eh o anunciado + 1
+(no maximo 16). A rota eh trocada se o custo novo for menor, ou se a rota
+atual ja passa por esse vizinho (ai aceita mesmo que tenha piorado). Se o
+vizinho que eh o proximo passo de uma rota para de anunciar esse destino,
+a rota vira 16.
+
+Comando R: o vizinho sai da lista e todas as rotas que passavam por ele
+ficam com 16. Elas vao assim no proximo anuncio e depois sao apagadas.
+
+Mensagens de quem nao eh vizinho sao ignoradas. Mensagem de texto sem
+rota eh descartada sem imprimir nada.
+
+
+4. Para-e-espera
+
+Cada envio ganha um seq novo. Depois do sendto o programa faz recvfrom com
+settimeout(0.1) esperando o ACK com o mesmo seq. Sao no maximo 3 envios (o
+primeiro e mais 2), e se nenhum ACK chegar imprime FALTOU UM ACK.
+
+Se chegar outra coisa enquanto espera o ACK, a mensagem eh confirmada e
+guardada pra ser processada depois, e o programa continua esperando.
+
+O ACK eh mandado antes de ver se quem mandou eh vizinho. Antes a gente so
+mandava pra vizinho, e no comeco do teste (um roteador ja com I e o outro
+ainda sem o V) ficava aparecendo FALTOU UM ACK sem ter perdido nada.
+
+Se uma mensagem repetida chegar (porque o ACK se perdeu), ela recebe ACK de
+novo mas nao eh processada outra vez. Pra isso guardamos o par (de, seq).
+Isso supoe que nenhum roteador eh reiniciado no meio do teste.
+
+
+5. TCP e select
+
+O select vigia o socket UDP e um socket TCP: o de accept quando nao tem
+conexao, ou a conexao aberta. So aceitamos uma conexao por vez. As linhas
+do TCP sao separadas pelo \n. Quando a conexao fecha, a ultima linha (se
+chegou sem \n) eh processada e o programa volta a esperar conexao nova.
+
+
+6. Testes
+
+Testamos com 3 roteadores em linha (R1 - R2 - R3) nas portas 10001, 10002
+e 10003:
+- T mostra todos os destinos com os custos certos
+- E R3 Oi! em R1 da "EE R3 Oi!" em R2 e "DD R1 Oi!" em R3
+- mensagem com varios espacos chega igual
+- comando errado imprime ???
+- R R3 em R2 e R R2 em R3: as rotas somem dos dois lados
+- comandos por TCP (nc sem -u), inclusive ultima linha sem \n
+- vizinho que nao existe: aparece FALTOU UM ACK
