@@ -1,0 +1,22 @@
+N B
+V A localhost 12001
+V C localhost 12003
+I 700
+R A
+T
+A 16 A
+B 0 B
+C 1 C
+D 16 A
+T
+A 3 C
+B 0 B
+C 1 C
+D 2 C
+E A depois da falha
+V A localhost 12001
+T
+A 1 A
+B 0 B
+C 1 C
+D 2 C

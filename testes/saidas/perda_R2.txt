@@ -1,0 +1,34 @@
+N R2
+V R1 localhost 13001
+V R3 localhost 13003
+I 500
+FALTOU UM ACK
+EE R3 msg0
+EE R3 msg1
+FALTOU UM ACK
+EE R3 msg2
+FALTOU UM ACK
+EE R3 msg3
+EE R3 msg4
+EE R3 msg5
+EE R3 msg6
+EE R3 msg7
+EE R3 msg8
+EE R3 msg9
+EE R3 msg10
+EE R3 msg11
+EE R3 msg12
+EE R3 msg13
+EE R3 msg14
+EE R3 msg15
+EE R3 msg16
+EE R3 msg17
+EE R3 msg18
+EE R3 msg19
+FALTOU UM ACK
+FALTOU UM ACK
+FALTOU UM ACK
+T
+R1 1 R1
+R2 0 R2
+R3 1 R3

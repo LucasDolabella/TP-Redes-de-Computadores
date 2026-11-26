@@ -1,0 +1,5 @@
+N D
+V C localhost 12003
+V A localhost 12001
+I 700
+EE A depois da falha

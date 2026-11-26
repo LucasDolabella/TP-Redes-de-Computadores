@@ -1,0 +1,15 @@
+N R1
+T
+R1 0 R1
+X teste???
+V R2 localhost 10002
+T
+R1 0 R1
+R2 1 R2
+I 1000
+T
+R1 0 R1
+R2 1 R2
+R3 2 R2
+E R3 Oi!
+E R9 sem rota

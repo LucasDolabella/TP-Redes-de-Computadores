@@ -1,0 +1,6 @@
+N R2
+V R1 localhost 14001
+V R3 localhost 14003
+I 500
+EE R3 via tcp
+EE R3 partido

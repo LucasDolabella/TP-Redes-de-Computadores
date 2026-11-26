@@ -1,0 +1,14 @@
+N R1
+V R2 localhost 14002
+I 500
+T
+R1 0 R1
+R2 1 R2
+R3 2 R2
+E R3 via tcp
+Z lixo???
+E R3 partido
+T
+R1 0 R1
+R2 1 R2
+R3 2 R2

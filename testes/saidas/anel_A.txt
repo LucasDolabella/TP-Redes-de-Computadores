@@ -1,0 +1,7 @@
+N A
+V B localhost 12002
+V D localhost 12004
+I 700
+R B
+DD B depois da falha
+V B localhost 12002

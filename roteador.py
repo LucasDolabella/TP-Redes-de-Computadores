@@ -12,23 +12,40 @@ vizinhos = {}   # nome do vizinho -> (endereco, porta)
 lock = threading.Lock()   # protege rotas, vizinhos e a fila
 
 # o timer nao manda nada direto, so coloca aqui e o loop principal envia.
-# fiz assim porque o envio fica esperando ack no recvfrom, e se o timer
-# tambem lesse o socket as duas threads iam brigar pelos pacotes
+# o envio fica esperando ack no recvfrom, e se o timer
+# tambem ler o socket as duas threads iam brigar pelos pacotes
 fila = []
 
-pendentes = []    # o que chegou enquanto eu tava esperando um ack
+pendentes = []    # o que chegou na espera de um ack
 ja_recebi = set() # (quem mandou, seq) das mensagens ja processadas
-seq = 0           # meu numero de sequencia, comeca em 0
+seq = 0           # numero de sequencia, comeca em 0
 
 porta = int(sys.argv[1])
 
-# udp pra tudo (parte 1) e tcp na mesma porta pros comandos (parte 3)
+# udp pra tudo e tcp na mesma porta pros comandos
 udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 udp.bind(("", porta))
 tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 tcp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 tcp.bind(("", porta))
 tcp.listen(1)
+
+
+# identificacao do remetente pelo par (endereco, porta)
+
+def normaliza(ip):
+    # qualquer 127.x.x.x eh a propria maquina; o kernel sempre usa 127.0.0.1
+    # como origem, mesmo que o V tenha dado um nome que resolve pra 127.0.1.1
+    if ip.startswith("127."):
+        return "127.0.0.1"
+    return ip
+
+def nome_do_remetente(end):
+    ip, porta_origem = end
+    for viz, (ip_viz, porta_viz) in vizinhos.items():
+        if ip_viz == normaliza(ip) and porta_viz == porta_origem:
+            return viz
+    return None   # nao eh vizinho
 
 
 # parte 1: vetor de distancias
@@ -105,7 +122,6 @@ def enviar(msg, viz):
             return
         endereco = vizinhos[viz]
 
-    msg["de"] = nome   # quem ta mandando agora (nao eh a origem da mensagem de texto)
     msg["seq"] = seq
     seq += 1
     dados = json.dumps(msg).encode()
@@ -122,7 +138,7 @@ def enviar(msg, viz):
 
 def espera_ack(numero):
     # se chegar outra coisa no meio guarda e continua esperando
-    # (limite de 20 pacotes pra nao travar aqui)
+    # (limite de 20 pacotes pra nao travar)
     for i in range(20):
         try:
             dados, end = udp.recvfrom(4096)
@@ -151,26 +167,26 @@ def chegou(dados, end):
         return msg.get("seq")
 
     # responde o ack antes de ver se eh vizinho. o ack so diz que chegou;
-    # se nao respondesse, quem mandou ia imprimir FALTOU UM ACK so porque
+    # se nao tivesse resposta, quem mandou ia imprimir FALTOU UM ACK porque
     # eu ainda nao recebi o comando V dele
     udp.sendto(json.dumps({"tipo": "ack", "seq": msg.get("seq")}).encode(), end)
 
-    # se o meu ack se perdeu o outro manda de novo, ai eu nao processo duas vezes
-    chave = (msg.get("de"), msg.get("seq"))
+    # se o meu ack se perdeu o outro manda de novo, nao processo duas vezes
+    chave = (end, msg.get("seq"))
     if chave not in ja_recebi:
         ja_recebi.add(chave)
-        pendentes.append(("json", msg))
+        pendentes.append(("json", (msg, end)))
     return None
 
 
-def processar(msg):
+def processar(msg, end):
     with lock:
-        eh_vizinho = msg.get("de") in vizinhos
-    if not eh_vizinho:   # quem nao eh vizinho eh ignorado
+        remetente = nome_do_remetente(end)
+    if remetente is None:   # quem nao eh vizinho eh ignorado
         return
 
     if msg["tipo"] == "vetor":
-        atualiza(msg["de"], msg["vetor"])
+        atualiza(remetente, msg["vetor"])
     elif msg["tipo"] == "texto":
         if msg["destino"] != nome:
             print("EE %s %s" % (msg["destino"], msg["texto"]), flush=True)
@@ -196,7 +212,7 @@ def comando(linha):
     elif partes[0] == "V" and len(partes) == 4 and partes[3].isdigit():
         print(linha, flush=True)
         with lock:
-            vizinhos[partes[1]] = (partes[2], int(partes[3]))
+            vizinhos[partes[1]] = (normaliza(socket.gethostbyname(partes[2])), int(partes[3]))
             rotas[partes[1]] = [1, partes[1]]
 
     elif partes[0] == "R" and len(partes) == 2:
@@ -231,7 +247,7 @@ def comando(linha):
         print(linha + "???", flush=True)
 
 
-conexao = None   # conexao tcp aberta (so aceito uma por vez)
+conexao = None   # conexao tcp aberta (uma por vez)
 resto = ""       # pedaco de linha do tcp que ainda nao chegou inteiro
 
 try:
@@ -243,7 +259,8 @@ try:
                 for linha in coisa.splitlines():
                     comando(linha.strip())
             else:
-                processar(coisa)
+                msg, end = coisa
+                processar(msg, end)
 
         # manda uma mensagem da fila
         with lock:
